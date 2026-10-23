@@ -21,6 +21,39 @@
       "mode": "view",
       "preferences": [
         {
+          "name": "source",
+          "title": "Data Source",
+          "description": "Where searches go. The engine needs no browser sign-in.",
+          "type": "dropdown",
+          "required": true,
+          "default": "portal",
+          "data": [
+            {
+              "title": "cedarengine API",
+              "value": "engine"
+            },
+            {
+              "title": "Cedarville Portal",
+              "value": "portal"
+            }
+          ]
+        },
+        {
+          "name": "apiUrl",
+          "title": "Engine URL",
+          "description": "Base URL of the cedarengine server",
+          "type": "textfield",
+          "required": false,
+          "default": "https://cedarengine.dunkirk.sh"
+        },
+        {
+          "name": "apiToken",
+          "title": "Engine Token",
+          "description": "The server's BEARER_TOKEN",
+          "type": "password",
+          "required": false
+        },
+        {
           "name": "demoMode",
           "title": "Demo Mode",
           "description": "Redact personal information for screenshots and demos",

@@ -15,6 +15,12 @@ declare type Preferences = ExtensionPreferences
 declare namespace Preferences {
   /** Preferences accessible in the `search-directory` command */
   export type SearchDirectory = ExtensionPreferences & {
+  /** Data Source - Where searches go. The engine needs no browser sign-in. */
+  "source": "engine" | "portal",
+  /** Engine URL - Base URL of the cedarengine server */
+  "apiUrl": string,
+  /** Engine Token - The server's BEARER_TOKEN */
+  "apiToken"?: string,
   /** Demo Mode - Redact personal information for screenshots and demos */
   "demoMode": boolean
 }

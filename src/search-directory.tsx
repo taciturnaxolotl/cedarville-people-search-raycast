@@ -7,6 +7,7 @@ import {
   Icon,
   Image,
   List,
+  openExtensionPreferences,
   showToast,
   Toast,
 } from "@raycast/api";
@@ -36,13 +37,15 @@ import {
   storeCookie,
 } from "./auth";
 import { getCacheSize, mergePeopleIntoCache, searchCache } from "./cache";
+import { type EngineConfig, emptyInfo, personInfo, searchEngine } from "./engine";
 import { getCachedPhotoPath } from "./images";
 
 type AuthState =
   | { kind: "loading" }
   | { kind: "ready"; cookie: string }
   | { kind: "sign-in" }
-  | { kind: "signing-in" };
+  | { kind: "signing-in" }
+  | { kind: "no-token" };
 
 const CLASS_LABELS: Record<string, string> = {
   FR: "Freshman",
@@ -215,12 +218,14 @@ function PersonDetail({
   person,
   photoPath,
   cookie,
+  engine,
   onSignOut,
   demo,
 }: {
   person: DirectoryPerson;
   photoPath: string | null;
   cookie: string;
+  engine: EngineConfig | null;
   onSignOut: () => void;
   demo: boolean;
 }) {
@@ -238,6 +243,12 @@ function PersonDetail({
   }, [photoPath]);
 
   useEffect(() => {
+    if (engine) {
+      personInfo(engine, person)
+        .then(setInfo)
+        .catch(() => setInfo(emptyInfo()));
+      return;
+    }
     (async () => {
       const terms = await getPersonTerms(person.Id, cookie);
       if (!terms.length) return;
@@ -258,7 +269,7 @@ function PersonDetail({
         }
       }
     })();
-  }, [person.Id, cookie]);
+  }, [person.Id, cookie, engine]);
 
   // Photo full-width at top, name + italic tags below
   const md: string[] = [];
@@ -581,12 +592,14 @@ function PersonListItem({
   person,
   photoPath,
   cookie,
+  engine,
   onSignOut,
   demo,
 }: {
   person: DirectoryPerson;
   photoPath: string | null;
   cookie: string;
+  engine: EngineConfig | null;
   onSignOut: () => void;
   demo: boolean;
 }) {
@@ -673,6 +686,7 @@ function PersonListItem({
                 person={person}
                 photoPath={photoPath}
                 cookie={cookie}
+                engine={engine}
                 onSignOut={onSignOut}
                 demo={demo}
               />
@@ -734,7 +748,15 @@ function PersonListItem({
 // ─── Main command ──────────────────────────────────────────────────────────
 
 export default function SearchDirectory() {
-  const { demoMode: demo } = getPreferenceValues<Preferences.SearchDirectory>();
+  const prefs = getPreferenceValues<Preferences.SearchDirectory>();
+  const { demoMode: demo } = prefs;
+  const engine: EngineConfig | null =
+    prefs.source === "portal"
+      ? null
+      : {
+          url: prefs.apiUrl?.trim() || "https://cedarengine.dunkirk.sh",
+          token: prefs.apiToken?.trim() ?? "",
+        };
   const [authState, setAuthState] = useState<AuthState>({ kind: "loading" });
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("");
@@ -749,6 +771,13 @@ export default function SearchDirectory() {
   const renewedRef = useRef(false);
 
   useEffect(() => {
+    if (engine) {
+      // The engine needs no sign-in, only a token in preferences.
+      setCacheSize(0);
+      getCacheSize().then(setCacheSize);
+      setAuthState(engine.token ? { kind: "ready", cookie: "" } : { kind: "no-token" });
+      return;
+    }
     (async () => {
       let cookie = await getStoredCookie();
       if (!cookie) {
@@ -774,7 +803,7 @@ export default function SearchDirectory() {
       }
       setAuthState({ kind: "sign-in" });
     })();
-  }, []);
+  }, [engine?.token]);
 
   useEffect(() => {
     if (authState.kind !== "ready") return;
@@ -809,7 +838,9 @@ export default function SearchDirectory() {
 
         // For single-word queries, search as both first and last name in parallel
         let fresh: DirectoryPerson[];
-        if (trimmed && !lastName) {
+        if (engine) {
+          fresh = await searchEngine(engine, trimmed, apiOptions);
+        } else if (trimmed && !lastName) {
           const [byFirst, byLast] = await Promise.all([
             searchDirectory(firstName, "", authState.cookie, apiOptions),
             searchDirectory("", firstName, authState.cookie, apiOptions),
@@ -957,6 +988,27 @@ export default function SearchDirectory() {
     );
   }
 
+  if (authState.kind === "no-token") {
+    return (
+      <List>
+        <List.EmptyView
+          title="Add the cedarengine token"
+          description="Paste the server's BEARER_TOKEN in the command preferences, or set Data Source back to Cedarville Portal."
+          icon={Icon.Key}
+          actions={
+            <ActionPanel>
+              <Action
+                title="Open Command Preferences"
+                icon={Icon.Gear}
+                onAction={openExtensionPreferences}
+              />
+            </ActionPanel>
+          }
+        />
+      </List>
+    );
+  }
+
   if (authState.kind === "signing-in") {
     return (
       <List isLoading>
@@ -978,6 +1030,7 @@ export default function SearchDirectory() {
       onSearchTextChange={setQuery}
       throttle={false}
       searchBarAccessory={
+        !engine ? (
         <List.Dropdown tooltip="Filter" value={filter} onChange={setFilter}>
           <List.Dropdown.Item title="All People" value="" />
           {populations.length > 0 && (
@@ -1003,6 +1056,7 @@ export default function SearchDirectory() {
             </List.Dropdown.Section>
           )}
         </List.Dropdown>
+        ) : undefined
       }
     >
       {results.length === 0 ? (
@@ -1031,6 +1085,7 @@ export default function SearchDirectory() {
               person={person}
               photoPath={photoPaths[person.Id] ?? null}
               cookie={authState.cookie}
+              engine={engine}
               onSignOut={handleSignOut}
               demo={demo}
             />
